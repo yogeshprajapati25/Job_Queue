@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import Job, JobStatus
+from app.logger import get_logger
+
+logger = get_logger(__name__)
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 QUEUE_NAME = "job_queue"
@@ -69,6 +72,7 @@ def process_job(job_type: str, payload: dict) -> dict:
 def handle_message(ch, method, properties, body):
     db: Session = SessionLocal()
     job_id = None
+    start_time = time.time()
 
     try:
         data = json.loads(body)
@@ -76,11 +80,25 @@ def handle_message(ch, method, properties, body):
 
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
-            print(f"❌ Job {job_id} not found — ACKing to discard stale message.")
+            logger.warning("Stale message — job not found, discarding", extra={"job_id": job_id})
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
-        print(f"⚙️  Processing job {job_id} | type={job.job_type} | attempt={job.retry_count + 1}/{job.max_retries + 1}")
+        # Job was cancelled via API before worker picked it up
+        if job.status == JobStatus.CANCELLED:
+            logger.info("Job was cancelled — discarding message", extra={"job_id": job_id})
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
+        logger.info(
+            "Job processing started",
+            extra={
+                "job_id": job_id,
+                "job_type": job.job_type,
+                "attempt": job.retry_count + 1,
+                "max_attempts": job.max_retries + 1,
+            },
+        )
 
         # Mark as processing
         job.status = JobStatus.PROCESSING
@@ -90,18 +108,30 @@ def handle_message(ch, method, properties, body):
         result = process_job(job.job_type, job.payload)
 
         # Success — persist result and mark completed
+        elapsed = round(time.time() - start_time, 3)
         job.status = JobStatus.COMPLETED
         job.result = result
         job.error_message = None
         db.commit()
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"✅ Job {job_id} completed. Result: {result}")
+        logger.info(
+            "Job completed",
+            extra={
+                "job_id": job_id,
+                "job_type": job.job_type,
+                "duration_seconds": elapsed,
+                "result": result,
+            },
+        )
 
     except Exception as e:
         db.rollback()
         error_str = str(e)
-        print(f"⚠️  Error on job {job_id}: {error_str}")
+        logger.error(
+            "Job processing failed",
+            extra={"job_id": job_id, "error": error_str},
+        )
 
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
@@ -109,35 +139,44 @@ def handle_message(ch, method, properties, body):
             job.error_message = error_str
 
             if job.retry_count > job.max_retries:
-                # Exceeded retries — dead-letter in DB and ACK to remove from queue
                 job.status = JobStatus.DEAD_LETTER
                 db.commit()
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-                print(f"💀 Job {job_id} moved to DEAD_LETTER after {job.max_retries} retries.")
+                logger.warning(
+                    "Job moved to DEAD_LETTER",
+                    extra={
+                        "job_id": job_id,
+                        "retry_count": job.retry_count,
+                        "max_retries": job.max_retries,
+                    },
+                )
             else:
                 job.status = JobStatus.FAILED
                 db.commit()
 
-                # Exponential backoff: wait before NACKing so the broker
-                # doesn't immediately re-deliver to another worker.
-                # requeue=False drops it; we re-publish manually after the delay
-                # so the message goes to the back of the queue, not the front.
                 backoff = 2 ** job.retry_count
-                print(f"🔄 Retrying job {job_id} in {backoff}s (attempt {job.retry_count}/{job.max_retries})...")
+                logger.info(
+                    "Job will be retried",
+                    extra={
+                        "job_id": job_id,
+                        "attempt": job.retry_count,
+                        "max_retries": job.max_retries,
+                        "backoff_seconds": backoff,
+                    },
+                )
                 time.sleep(backoff)
 
-                # Re-publish to the back of the queue instead of NACKing to front
+                # Re-publish to back of queue after backoff
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 ch.basic_publish(
                     exchange="",
                     routing_key=QUEUE_NAME,
-                    body=body,  # same message body
+                    body=body,
                     properties=pika.BasicProperties(
                         delivery_mode=pika.DeliveryMode.Persistent
                     ),
                 )
         else:
-            # Can't find the job at all — discard the message
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     finally:
@@ -149,7 +188,6 @@ def handle_message(ch, method, properties, body):
 # ---------------------------------------------------------------------------
 
 def start_consumer():
-    # Retry loop — RabbitMQ may not be ready immediately even after health check passes
     params = pika.URLParameters(RABBITMQ_URL)
     connection = None
     retries = 0
@@ -157,30 +195,26 @@ def start_consumer():
 
     while retries < max_retries:
         try:
-            print(f"🔌 Connecting to RabbitMQ (attempt {retries + 1}/{max_retries})...")
+            logger.info("Connecting to RabbitMQ", extra={"attempt": retries + 1, "max_attempts": max_retries})
             connection = pika.BlockingConnection(params)
-            print("✅ Connected to RabbitMQ.")
+            logger.info("Connected to RabbitMQ successfully")
             break
         except Exception as e:
             retries += 1
-            wait = 2 * retries  # 2s, 4s, 6s ...
-            print(f"⚠️  RabbitMQ not ready: {e}. Retrying in {wait}s...")
+            wait = 2 * retries
+            logger.warning("RabbitMQ not ready", extra={"error": str(e), "retry_in_seconds": wait})
             time.sleep(wait)
 
     if connection is None or connection.is_closed:
-        print("❌ Could not connect to RabbitMQ after max retries. Exiting.")
+        logger.error("Could not connect to RabbitMQ after max retries. Exiting.")
         raise SystemExit(1)
 
     channel = connection.channel()
     channel.queue_declare(queue=QUEUE_NAME, durable=True)
-
-    # prefetch_count=1: don't give a worker a second message until it ACKs the first.
-    # This is what enables fair dispatch across multiple worker replicas.
     channel.basic_qos(prefetch_count=1)
-
     channel.basic_consume(queue=QUEUE_NAME, on_message_callback=handle_message)
 
-    print("🚀 Worker started. Waiting for messages. Press CTRL+C to exit.")
+    logger.info("Worker started, waiting for messages", extra={"queue": QUEUE_NAME})
     channel.start_consuming()
 
 
