@@ -149,10 +149,29 @@ def handle_message(ch, method, properties, body):
 # ---------------------------------------------------------------------------
 
 def start_consumer():
+    # Retry loop — RabbitMQ may not be ready immediately even after health check passes
     params = pika.URLParameters(RABBITMQ_URL)
-    connection = pika.BlockingConnection(params)
-    channel = connection.channel()
+    connection = None
+    retries = 0
+    max_retries = 10
 
+    while retries < max_retries:
+        try:
+            print(f"🔌 Connecting to RabbitMQ (attempt {retries + 1}/{max_retries})...")
+            connection = pika.BlockingConnection(params)
+            print("✅ Connected to RabbitMQ.")
+            break
+        except Exception as e:
+            retries += 1
+            wait = 2 * retries  # 2s, 4s, 6s ...
+            print(f"⚠️  RabbitMQ not ready: {e}. Retrying in {wait}s...")
+            time.sleep(wait)
+
+    if connection is None or connection.is_closed:
+        print("❌ Could not connect to RabbitMQ after max retries. Exiting.")
+        raise SystemExit(1)
+
+    channel = connection.channel()
     channel.queue_declare(queue=QUEUE_NAME, durable=True)
 
     # prefetch_count=1: don't give a worker a second message until it ACKs the first.
