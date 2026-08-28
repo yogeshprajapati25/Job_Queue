@@ -3,8 +3,7 @@ services:
   - type: web
     name: job-queue-api
     runtime: docker
-    dockerfilePath: ./Dockerfile
-    startCommand: sh start_api.sh
+    dockerfilePath: ./Dockerfile.api
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -17,8 +16,7 @@ services:
   - type: worker
     name: job-queue-worker
     runtime: docker
-    dockerfilePath: ./Dockerfile
-    startCommand: python -m worker.consumer
+    dockerfilePath: ./Dockerfile.worker
     envVars:
       - key: DATABASE_URL
         fromDatabase:
