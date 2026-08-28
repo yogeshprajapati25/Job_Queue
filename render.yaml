@@ -1,9 +1,10 @@
 services:
-  # FastAPI Web Service — handles HTTP requests
+  # FastAPI Web Service
   - type: web
     name: job-queue-api
     runtime: docker
     dockerfilePath: ./Dockerfile.api
+    plan: free
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -12,11 +13,13 @@ services:
       - key: RABBITMQ_URL
         sync: false
 
-  # Background Worker — consumes RabbitMQ messages, no HTTP port needed
-  - type: worker
+  # Worker runs as a web service on free tier
+  # It exposes a minimal /health endpoint to keep Render happy
+  - type: web
     name: job-queue-worker
     runtime: docker
     dockerfilePath: ./Dockerfile.worker
+    plan: free
     envVars:
       - key: DATABASE_URL
         fromDatabase:

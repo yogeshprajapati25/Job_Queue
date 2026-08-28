@@ -2,7 +2,9 @@ import json
 import os
 import random
 import time
+import threading
 import pika
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -13,6 +15,28 @@ logger = get_logger(__name__)
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 QUEUE_NAME = "job_queue"
+PORT = int(os.getenv("PORT", 8001))
+
+
+# ---------------------------------------------------------------------------
+# Minimal health server so Render (free tier) sees an open port
+# ---------------------------------------------------------------------------
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"status":"worker running"}')
+
+    def log_message(self, format, *args):
+        pass  # suppress default HTTP access logs
+
+
+def start_health_server():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    logger.info("Worker health server started", extra={"port": PORT})
+    server.serve_forever()
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +75,6 @@ def handle_generic(payload: dict) -> dict:
     return {"status": "processed"}
 
 
-# Maps job_type strings to their handler functions
 JOB_HANDLERS = {
     "send_email": handle_send_email,
     "generate_report": handle_generate_report,
@@ -84,7 +107,6 @@ def handle_message(ch, method, properties, body):
             ch.basic_ack(delivery_tag=method.delivery_tag)
             return
 
-        # Job was cancelled via API before worker picked it up
         if job.status == JobStatus.CANCELLED:
             logger.info("Job was cancelled — discarding message", extra={"job_id": job_id})
             ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -100,14 +122,11 @@ def handle_message(ch, method, properties, body):
             },
         )
 
-        # Mark as processing
         job.status = JobStatus.PROCESSING
         db.commit()
 
-        # Run the handler
         result = process_job(job.job_type, job.payload)
 
-        # Success — persist result and mark completed
         elapsed = round(time.time() - start_time, 3)
         job.status = JobStatus.COMPLETED
         job.result = result
@@ -128,10 +147,7 @@ def handle_message(ch, method, properties, body):
     except Exception as e:
         db.rollback()
         error_str = str(e)
-        logger.error(
-            "Job processing failed",
-            extra={"job_id": job_id, "error": error_str},
-        )
+        logger.error("Job processing failed", extra={"job_id": job_id, "error": error_str})
 
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
@@ -144,11 +160,7 @@ def handle_message(ch, method, properties, body):
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 logger.warning(
                     "Job moved to DEAD_LETTER",
-                    extra={
-                        "job_id": job_id,
-                        "retry_count": job.retry_count,
-                        "max_retries": job.max_retries,
-                    },
+                    extra={"job_id": job_id, "retry_count": job.retry_count},
                 )
             else:
                 job.status = JobStatus.FAILED
@@ -157,16 +169,10 @@ def handle_message(ch, method, properties, body):
                 backoff = 2 ** job.retry_count
                 logger.info(
                     "Job will be retried",
-                    extra={
-                        "job_id": job_id,
-                        "attempt": job.retry_count,
-                        "max_retries": job.max_retries,
-                        "backoff_seconds": backoff,
-                    },
+                    extra={"job_id": job_id, "attempt": job.retry_count, "backoff_seconds": backoff},
                 )
                 time.sleep(backoff)
 
-                # Re-publish to back of queue after backoff
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 ch.basic_publish(
                     exchange="",
@@ -188,6 +194,11 @@ def handle_message(ch, method, properties, body):
 # ---------------------------------------------------------------------------
 
 def start_consumer():
+    # Start health server in background thread so Render sees an open port
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+
+    # Connect to RabbitMQ with retry
     params = pika.URLParameters(RABBITMQ_URL)
     connection = None
     retries = 0
