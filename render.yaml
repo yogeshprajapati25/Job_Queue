@@ -1,11 +1,10 @@
 services:
-  # 1. FastAPI Web Service
+  # FastAPI Web Service — handles HTTP requests
   - type: web
     name: job-queue-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    plan: free
+    startCommand: sh start_api.sh
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -14,13 +13,12 @@ services:
       - key: RABBITMQ_URL
         sync: false
 
-  # 2. Background Worker
-  - type: web
+  # Background Worker — consumes RabbitMQ messages, no HTTP port needed
+  - type: worker
     name: job-queue-worker
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: python -m worker.consumer
-    plan: free
+    startCommand: python -m worker.consumer
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -31,4 +29,5 @@ services:
 
 databases:
   - name: job-queue-db
+    databaseName: job_db
     plan: free
