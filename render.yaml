@@ -4,7 +4,7 @@ services:
     name: job-queue-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -12,14 +12,14 @@ services:
           name: job-queue-db
           property: connectionString
       - key: RABBITMQ_URL
-        sync: false   # Manually set in Render Dashboard
+        sync: false
 
-  # 2. Worker Service (Deployed as 'web' type to use Free plan)
+  # 2. Background Worker
   - type: web
     name: job-queue-worker
     runtime: docker
     dockerfilePath: ./Dockerfile
-    startCommand: python -m worker.consumer
+    dockerCommand: python -m worker.consumer
     plan: free
     envVars:
       - key: DATABASE_URL
@@ -27,7 +27,7 @@ services:
           name: job-queue-db
           property: connectionString
       - key: RABBITMQ_URL
-        sync: false   # Manually set in Render Dashboard
+        sync: false
 
 databases:
   - name: job-queue-db
