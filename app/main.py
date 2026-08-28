@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
@@ -14,6 +14,7 @@ from app.database import get_db, engine, Base
 from app.models import Job, JobStatus
 from app.producer import publish_job, RABBITMQ_URL
 from app.logger import get_logger
+from app.auth import verify_api_key
 
 logger = get_logger(__name__)
 
@@ -78,7 +79,11 @@ class HealthResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
-def create_job(job_in: JobCreate, db: Session = Depends(get_db)):
+def create_job(
+    job_in: JobCreate,
+    db: Session = Depends(get_db),
+    api_key: str = Security(verify_api_key),
+):
     """Accept a job, persist it as PENDING, and enqueue it to RabbitMQ."""
     new_job = Job(
         job_type=job_in.job_type,
@@ -105,6 +110,7 @@ def list_jobs(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(10, ge=1, le=100, description="Results per page"),
     db: Session = Depends(get_db),
+    api_key: str = Security(verify_api_key),
 ):
     """
     List all jobs with optional filtering by status and job_type.
@@ -138,7 +144,11 @@ def list_jobs(
 
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
-def get_job(job_id: UUID, db: Session = Depends(get_db)):
+def get_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    api_key: str = Security(verify_api_key),
+):
     """Get a single job by its UUID."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -150,7 +160,11 @@ def get_job(job_id: UUID, db: Session = Depends(get_db)):
 
 
 @app.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
-def cancel_job(job_id: UUID, db: Session = Depends(get_db)):
+def cancel_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    api_key: str = Security(verify_api_key),
+):
     """
     Cancel a PENDING job before the worker picks it up.
     Only PENDING jobs can be cancelled — PROCESSING/COMPLETED cannot be undone.
