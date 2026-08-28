@@ -199,7 +199,11 @@ def start_consumer():
     health_thread.start()
 
     # Connect to RabbitMQ with retry
+    # heartbeat=60 keeps the connection alive on CloudAMQP free tier
+    # blocked_connection_timeout=300 prevents silent hangs
     params = pika.URLParameters(RABBITMQ_URL)
+    params.heartbeat = 60
+    params.blocked_connection_timeout = 300
     connection = None
     retries = 0
     max_retries = 10
