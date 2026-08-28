@@ -1,0 +1,32 @@
+services:
+  # FastAPI Web Service
+  - type: web
+    name: job-queue-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: job-queue-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false   # you set this manually in Render dashboard
+
+  # Background Worker
+  - type: worker
+    name: job-queue-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    startCommand: python -m worker.consumer
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: job-queue-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false   # you set this manually in Render dashboard
+
+databases:
+  - name: job-queue-db
+    plan: free
