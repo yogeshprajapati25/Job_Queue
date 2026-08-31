@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Job Queue</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #555;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #555;
+            font-weight: 500;
+        }
+        select, textarea, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: monospace;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status.PENDING { background: #fff3cd; color: #856404; }
+        .status.PROCESSING { background: #cce5ff; color: #004085; }
+        .status.COMPLETED { background: #d4edda; color: #155724; }
+        .status.FAILED { background: #f8d7da; color: #721c24; }
+        .status.DEAD_LETTER { background: #d6d8d9; color: #383d41; }
+        .status.CANCELLED { background: #e2e3e5; color: #383d41; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #dee2e6;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        tr:hover { background: #f8f9fa; }
+        .mono {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        .error {
+            color: #d32f2f;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .success {
+            color: #388e3c;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .refresh-indicator {
+            text-align: right;
+            color: #999;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Distributed Job Queue</h1>
+
+        <div class="card">
+            <h2>Submit New Job</h2>
+            <form id="jobForm">
+                <div class="form-group">
+                    <label for="jobType">Job Type</label>
+                    <select id="jobType" required>
+                        <option value="send_email">Send Email</option>
+                        <option value="generate_report">Generate Report</option>
+                        <option value="resize_image">Resize Image</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="payload">Payload (JSON format)</label>
+                    <textarea id="payload" placeholder='{"to": "user@example.com"}' required></textarea>
+                </div>
+                <button type="submit" id="submitBtn">Submit Job</button>
+                <div id="formMessage"></div>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="refresh-indicator" id="refreshIndicator">Last updated: -</div>
+            <h2>Recent Jobs</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="jobsTable">
+                    <tr><td colspan="5" style="text-align:center;color:#999;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // IMPORTANT: Replace this with your actual API key from Render environment
+        const API_KEY = 'e5f2055707f2315d23b4f3162dd8226ea44355191faa690cdd8f55737f4164c4';
+        const API_URL = window.location.origin;
+
+        // Prefill payload based on job type
+        document.getElementById('jobType').addEventListener('change', (e) => {
+            const payloadField = document.getElementById('payload');
+            const examples = {
+                'send_email': '{"to": "user@example.com"}',
+                'generate_report': '{"report_id": "Q4-2026"}',
+                'resize_image': '{"image_id": "photo-123"}'
+            };
+            payloadField.value = examples[e.target.value] || '{}';
+        });
+
+        // Submit job form
+        document.getElementById('jobForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submitBtn');
+            const messageDiv = document.getElementById('formMessage');
+            
+            submitBtn.disabled = true;
+            messageDiv.innerHTML = '';
+
+            const jobType = document.getElementById('jobType').value;
+            const payloadText = document.getElementById('payload').value;
+
+            try {
+                const payload = JSON.parse(payloadText);
+                
+                const response = await fetch(`${API_URL}/jobs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': API_KEY
+                    },
+                    body: JSON.stringify({ job_type: jobType, payload })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const job = await response.json();
+                messageDiv.innerHTML = `<div class="success">✓ Job created: ${job.id}</div>`;
+                
+                // Refresh job list immediately
+                loadJobs();
+            } catch (err) {
+                messageDiv.innerHTML = `<div class="error">✗ Error: ${err.message}</div>`;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Load jobs list
+        async function loadJobs() {
+            try {
+                const response = await fetch(`${API_URL}/jobs?page_size=20`, {
+                    headers: { 'X-API-Key': API_KEY }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const tbody = document.getElementById('jobsTable');
+                
+                if (data.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No jobs yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.items.map(job => {
+                    const created = new Date(job.created_at);
+                    const updated = job.updated_at ? new Date(job.updated_at) : null;
+                    const duration = updated ? ((updated - created) / 1000).toFixed(1) + 's' : '-';
+                    
+                    return `
+                        <tr>
+                            <td class="mono">${job.id.slice(0, 8)}...</td>
+                            <td>${job.job_type}</td>
+                            <td><span class="status ${job.status}">${job.status}</span></td>
+                            <td>${created.toLocaleTimeString()}</td>
+                            <td>${duration}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                document.getElementById('refreshIndicator').textContent = 
+                    `Last updated: ${new Date().toLocaleTimeString()}`;
+                    
+            } catch (err) {
+                console.error('Failed to load jobs:', err);
+            }
+        }
+
+        // Auto-refresh every 2 seconds
+        loadJobs();
+        setInterval(loadJobs, 2000);
+    </script>
+</body>
+</html>

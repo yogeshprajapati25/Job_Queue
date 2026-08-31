@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Security
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
@@ -32,10 +34,19 @@ def run_migrations():
 
 app = FastAPI(title="Distributed Job Queue API")
 
+# Mount static files directory for frontend
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 
 @app.on_event("startup")
 def startup_event():
     run_migrations()
+
+
+@app.get("/")
+def root():
+    """Serve the frontend dashboard"""
+    return FileResponse("app/static/index.html")
 
 
 # ---------------------------------------------------------------------------
