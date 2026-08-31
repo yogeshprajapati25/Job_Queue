@@ -1,190 +1,249 @@
 # Distributed Job Queue System
 
-A production-grade asynchronous job queue built with **FastAPI**, **RabbitMQ**, **PostgreSQL**, and **Docker**. Decouples heavy background tasks from the HTTP request cycle using a message broker and independent worker processes.
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://job-queue-api-wcg6.onrender.com)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED)](https://www.docker.com/)
+
+A production-grade asynchronous job queue system that decouples heavy background tasks from HTTP request handling using FastAPI, RabbitMQ, and PostgreSQL. Prevents API thread starvation and ensures reliable task execution with exponential backoff retry and dead-letter handling.
+
+**[🚀 Live Demo](https://job-queue-api-wcg6.onrender.com)** | **[📖 API Docs](https://job-queue-api-wcg6.onrender.com/docs)**
+
+---
 
 ## Architecture
 
+```mermaid
+graph LR
+    A[Client] -->|POST /jobs| B[FastAPI API]
+    B -->|1. Persist PENDING| C[(PostgreSQL)]
+    B -->|2. Publish message| D[RabbitMQ Queue]
+    D -->|Consume| E[Background Worker]
+    E -->|Execute handler| F[Job Logic]
+    F -->|Update status| C
+    E -->|Retry on failure| D
+    
+    style B fill:#4CAF50
+    style D fill:#FF9800
+    style E fill:#2196F3
+    style C fill:#9C27B0
 ```
-┌─────────────┐     POST /jobs      ┌─────────────────┐
-│   Client    │ ──────────────────► │   FastAPI API   │
-└─────────────┘                     └────────┬────────┘
-                                             │ 1. Persist job (PENDING)
-                                             │ 2. Publish message
-                                             ▼
-                                    ┌─────────────────┐
-                                    │    RabbitMQ     │
-                                    │  (job_queue)    │
-                                    └────────┬────────┘
-                                             │ Consume message
-                                             ▼
-                                    ┌─────────────────┐
-                                    │  Worker Process │
-                                    │  (consumer.py)  │
-                                    └────────┬────────┘
-                                             │ Update job status
-                                             ▼
-                                    ┌─────────────────┐
-                                    │   PostgreSQL    │
-                                    │  (jobs table)   │
-                                    └─────────────────┘
-```
+
+**Flow:**
+1. API accepts job → returns `202 Accepted` in <100ms
+2. Message published to durable RabbitMQ queue
+3. Worker consumes message independently
+4. On failure: retry with exponential backoff (2s → 4s → 8s)
+5. After 3 retries: mark as `DEAD_LETTER`
+
+---
 
 ## Features
 
-- **Async job processing** — API returns immediately (202 Accepted), worker processes in background
-- **Multiple job types** — `send_email`, `generate_report`, `resize_image` with distinct handlers
-- **Retry with exponential backoff** — failed jobs retry up to 3 times (2s → 4s → 8s delays)
-- **Dead-letter handling** — jobs exceeding max retries are marked `DEAD_LETTER` in DB
-- **Job cancellation** — cancel `PENDING` jobs before the worker picks them up
-- **Structured JSON logging** — every log line is machine-parseable (Datadog/CloudWatch ready)
-- **Health check endpoint** — monitors DB and RabbitMQ connectivity
-- **Worker scaling** — run multiple worker replicas with fair dispatch via `prefetch_count=1`
-- **DB migrations** — Alembic handles schema versioning (no `create_all` in production)
+- ✅ **Async Processing** — API never blocks, heavy tasks run in background
+- ✅ **Retry Logic** — Exponential backoff with configurable max retries
+- ✅ **Dead Letter Queue** — Failed jobs tracked in database
+- ✅ **API Key Authentication** — Secure endpoints with header-based auth
+- ✅ **Health Monitoring** — `/health` endpoint checks DB + RabbitMQ connectivity
+- ✅ **Structured Logging** — JSON logs with job_id, duration, status
+- ✅ **Job Cancellation** — Cancel pending jobs before worker picks them up
+- ✅ **Horizontal Scaling** — Run multiple worker replicas with fair dispatch
+- ✅ **Database Migrations** — Alembic for schema versioning
+- ✅ **Deployed & Live** — Production deployment on Render
+
+---
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Web API | FastAPI + Uvicorn |
-| Message Broker | RabbitMQ (pika) |
-| Database | PostgreSQL + SQLAlchemy ORM |
+| Message Broker | RabbitMQ (CloudAMQP) |
+| Database | PostgreSQL + SQLAlchemy |
 | Migrations | Alembic |
-| Containerization | Docker + Docker Compose |
+| Deployment | Render (Docker) |
 | Language | Python 3.11 |
 
-## Job Lifecycle
-
-```
-PENDING → PROCESSING → COMPLETED
-                    ↘ FAILED (retried with backoff)
-                         ↘ DEAD_LETTER (max retries exceeded)
-PENDING → CANCELLED (via DELETE /jobs/{id})
-```
+---
 
 ## Quick Start
 
-**1. Clone and configure:**
+### 1. Clone & Setup
+
 ```bash
-git clone <your-repo-url>
-cd Job_queue
+git clone https://github.com/yogeshprajapati25/Job_Queue.git
+cd Job_Queue
 cp .env.example .env
+# Edit .env with your DATABASE_URL, RABBITMQ_URL, API_KEY
 ```
 
-**2. Start all services:**
+### 2. Run with Docker Compose
+
 ```bash
 docker compose up --build
 ```
 
-**3. Verify everything is running:**
+Services start on:
+- API: `http://localhost:8000`
+- API Docs: `http://localhost:8000/docs`
+- RabbitMQ Management: `http://localhost:15673`
+
+### 3. Test the API
+
+**Health Check:**
 ```bash
 curl http://localhost:8000/health
-# {"status":"healthy","database":"ok","rabbitmq":"ok"}
 ```
 
-## API Endpoints
-
-### Create a Job
+**Create a Job:**
 ```bash
 curl -X POST http://localhost:8000/jobs \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{"job_type": "send_email", "payload": {"to": "user@example.com"}}'
 ```
 
-Response `202 Accepted`:
-```json
-{
-  "id": "802cfc84-c2e5-431a-8dce-eb4e4712d9cf",
-  "job_type": "send_email",
-  "status": "PENDING",
-  "payload": {"to": "user@example.com"},
-  "result": null,
-  "retry_count": 0,
-  "created_at": "2026-08-26T15:07:34"
-}
-```
-
-### Get Job Status
+**Check Job Status:**
 ```bash
-curl http://localhost:8000/jobs/802cfc84-c2e5-431a-8dce-eb4e4712d9cf
+curl http://localhost:8000/jobs/{job_id} \
+  -H "X-API-Key: your-api-key"
 ```
 
-### List Jobs (with filters)
-```bash
-# All jobs
-curl http://localhost:8000/jobs
+---
 
-# Filter by status and paginate
-curl "http://localhost:8000/jobs?status=COMPLETED&page=1&page_size=10"
+## API Endpoints
 
-# Filter by job type
-curl "http://localhost:8000/jobs?job_type=send_email"
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `GET` | `/` | Frontend dashboard | No |
+| `GET` | `/health` | System health check | No |
+| `POST` | `/jobs` | Submit new job | Yes |
+| `GET` | `/jobs` | List all jobs (paginated) | Yes |
+| `GET` | `/jobs/{id}` | Get job status | Yes |
+| `DELETE` | `/jobs/{id}` | Cancel pending job | Yes |
+
+---
+
+## Job Types
+
+| Type | Simulates | Duration |
+|------|-----------|----------|
+| `send_email` | Email delivery | 2s |
+| `generate_report` | PDF generation | 30s |
+| `resize_image` | Image processing | 1s |
+
+---
+
+## Job Lifecycle
+
+```
+PENDING → PROCESSING → COMPLETED ✅
+                    ↘ FAILED (retry 1) → FAILED (retry 2) → FAILED (retry 3) → DEAD_LETTER 💀
+PENDING → CANCELLED (via DELETE /jobs/{id})
 ```
 
-### Cancel a Pending Job
-```bash
-curl -X DELETE http://localhost:8000/jobs/802cfc84-c2e5-431a-8dce-eb4e4712d9cf
-# 204 No Content
-```
-
-### Health Check
-```bash
-curl http://localhost:8000/health
-# {"status":"healthy","database":"ok","rabbitmq":"ok"}
-```
-
-## Supported Job Types
-
-| job_type | Simulates | Payload fields |
-|----------|-----------|---------------|
-| `send_email` | Email delivery (2s) | `to` |
-| `generate_report` | PDF/CSV generation (3s) | `report_id` |
-| `resize_image` | Image processing (1s) | `image_id` |
-
-Any other `job_type` falls back to a generic handler.
+---
 
 ## Scaling Workers
 
-Run multiple worker replicas — RabbitMQ distributes messages fairly:
+Run multiple worker instances for parallel processing:
 
 ```bash
 docker compose up --scale worker=3
 ```
 
-## Interactive API Docs
+RabbitMQ distributes messages fairly across workers using `prefetch_count=1`.
 
-Swagger UI available at: [http://localhost:8000/docs](http://localhost:8000/docs)
+---
 
-## Database Migrations
+## Environment Variables
 
-Migrations run automatically on API startup via Alembic.
-
-To create a new migration after changing models:
-```bash
-# Inside the api container
-docker compose exec api alembic revision --autogenerate -m "describe your change"
-docker compose exec api alembic upgrade head
+```env
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+RABBITMQ_URL=amqp://user:pass@host:5672/
+API_KEY=your-secret-api-key-here
 ```
+
+Generate a secure API key:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+---
 
 ## Project Structure
 
 ```
-Job_queue/
+Job_Queue/
 ├── app/
-│   ├── main.py          # FastAPI app, routes, startup
-│   ├── models.py        # SQLAlchemy Job model + JobStatus enum
-│   ├── database.py      # DB engine, session, Base
-│   ├── producer.py      # RabbitMQ publisher (connection pooled)
-│   └── logger.py        # Structured JSON logger
+│   ├── main.py          # FastAPI routes
+│   ├── models.py        # SQLAlchemy models
+│   ├── database.py      # DB connection
+│   ├── producer.py      # RabbitMQ publisher
+│   ├── auth.py          # API key validation
+│   ├── logger.py        # Structured logging
+│   └── static/
+│       └── index.html   # Frontend dashboard
 ├── worker/
-│   └── consumer.py      # RabbitMQ consumer + job handlers
-├── alembic/
-│   ├── env.py           # Alembic configuration
-│   └── versions/
-│       └── 0001_initial_jobs_table.py
+│   └── consumer.py      # Background job processor
+├── alembic/             # Database migrations
 ├── docker-compose.yml
-├── Dockerfile
+├── Dockerfile.api
+├── Dockerfile.worker
 ├── requirements.txt
-├── alembic.ini
-├── .env                 # secrets (git-ignored)
-└── .env.example         # template for new contributors
+└── README.md
 ```
+
+---
+
+## Deployment
+
+Deployed on [Render](https://render.com) with:
+- 2 web services (API + Worker with health endpoint)
+- 1 PostgreSQL database
+- CloudAMQP for hosted RabbitMQ
+
+Auto-deploys on push to `main` branch.
+
+---
+
+## Development
+
+**Run migrations:**
+```bash
+docker compose exec api alembic upgrade head
+```
+
+**Create new migration:**
+```bash
+docker compose exec api alembic revision --autogenerate -m "description"
+```
+
+**View logs:**
+```bash
+docker compose logs -f worker
+```
+
+---
+
+## Future Enhancements
+
+- [ ] WebSocket for real-time job status updates
+- [ ] Prometheus metrics endpoint
+- [ ] Job priority queues (high/medium/low)
+- [ ] Rate limiting per API key
+- [ ] S3 integration for file uploads
+- [ ] Scheduled/cron jobs
+
+---
+
+## License
+
+MIT
+
+---
+
+## Author
+
+**Yogesh Prajapati**  
+[GitHub](https://github.com/yogeshprajapati25) • [LinkedIn](https://linkedin.com/in/your-profile) • [Email](mailto:yogeshparjapati46@gmail.com)
