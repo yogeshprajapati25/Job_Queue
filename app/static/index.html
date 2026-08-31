@@ -68,6 +68,14 @@
             margin-bottom: 24px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         }
+        
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
         h2 {
             font-size: 20px;
             margin-bottom: 20px;
@@ -146,6 +154,12 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 14px;
+        }
+        thead {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
         }
         th {
             background: #f8f9fa;
@@ -279,6 +293,39 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            padding: 8px 16px;
+            font-size: 14px;
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            box-shadow: none;
+        }
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+        }
+        .pagination button:disabled {
+            background: #f0f0f0;
+            color: #999;
+            border-color: #ddd;
+            cursor: not-allowed;
+        }
+        .pagination .page-info {
+            padding: 8px 16px;
+            color: #666;
+            font-size: 14px;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -340,20 +387,29 @@
                 <span><span class="loading-spinner"></span> Auto-refresh every 2s</span>
             </div>
             <h2>Recent Jobs <span style="color:#999;font-weight:400;font-size:14px;">(Click row for details)</span></h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Duration</th>
-                    </tr>
-                </thead>
-                <tbody id="jobsTable">
-                    <tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">Loading jobs...</td></tr>
-                </tbody>
-            </table>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobsTable">
+                        <tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">Loading jobs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination">
+                <button onclick="changePage(-1)" id="prevBtn">← Previous</button>
+                <span class="page-info" id="pageInfo">Page 1</span>
+                <button onclick="changePage(1)" id="nextBtn">Next →</button>
+            </div>
         </div>
     </div>
 
@@ -371,6 +427,9 @@
     <script>
         const API_KEY = 'e5f2055707f2315d23b4f3162dd8226ea44355191faa690cdd8f55737f4164c4';
         const API_URL = window.location.origin;
+        let currentPage = 1;
+        const pageSize = 15;
+        let totalJobs = 0;
 
         document.getElementById('jobType').addEventListener('change', (e) => {
             const payloadField = document.getElementById('payload');
@@ -424,7 +483,7 @@
 
         async function loadJobs() {
             try {
-                const response = await fetch(`${API_URL}/jobs?page_size=30`, {
+                const response = await fetch(`${API_URL}/jobs?page=${currentPage}&page_size=${pageSize}`, {
                     headers: { 'X-API-Key': API_KEY }
                 });
 
@@ -432,6 +491,9 @@
 
                 const data = await response.json();
                 const tbody = document.getElementById('jobsTable');
+                
+                // Update total jobs count
+                totalJobs = data.total;
                 
                 // Update stats
                 const stats = {
@@ -457,6 +519,7 @@
                 
                 if (data.items.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">No jobs yet. Submit your first job above!</td></tr>';
+                    updatePaginationControls();
                     return;
                 }
 
@@ -478,10 +541,36 @@
 
                 document.getElementById('refreshIndicator').textContent = 
                     `Last updated: ${new Date().toLocaleTimeString()}`;
+                
+                updatePaginationControls();
                     
             } catch (err) {
                 console.error('Failed to load jobs:', err);
             }
+        }
+
+        function changePage(direction) {
+            const totalPages = Math.ceil(totalJobs / pageSize);
+            const newPage = currentPage + direction;
+            
+            if (newPage < 1 || newPage > totalPages) return;
+            
+            currentPage = newPage;
+            loadJobs();
+        }
+
+        function updatePaginationControls() {
+            const totalPages = Math.max(1, Math.ceil(totalJobs / pageSize));
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const pageInfo = document.getElementById('pageInfo');
+            
+            // Update page info
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+            
+            // Enable/disable buttons
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage >= totalPages;
         }
 
         function showJobDetails(job) {
