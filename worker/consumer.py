@@ -52,8 +52,8 @@ def handle_send_email(payload: dict) -> dict:
 
 
 def handle_generate_report(payload: dict) -> dict:
-    """Simulate generating a PDF/CSV report."""
-    time.sleep(3)
+    """Simulate generating a PDF/CSV report. Takes 30 seconds to show async benefit."""
+    time.sleep(30)  # Simulate heavy processing — this is the whole point of async
     if random.random() < 0.3:
         raise Exception("Report generation failed: data source unavailable")
     return {"report_url": f"/reports/{payload.get('report_id', 'unknown')}.pdf"}
