@@ -17,6 +17,7 @@ from app.models import Job, JobStatus
 from app.producer import publish_job, RABBITMQ_URL
 from app.logger import get_logger
 from app.auth import verify_api_key
+from app.rate_limiter import check_rate_limit
 
 logger = get_logger(__name__)
 
@@ -95,7 +96,24 @@ def create_job(
     db: Session = Depends(get_db),
     api_key: str = Security(verify_api_key),
 ):
-    """Accept a job, persist it as PENDING, and enqueue it to RabbitMQ."""
+    """
+    Accept a job, persist it as PENDING, and enqueue it to RabbitMQ.
+    
+    Rate limited to 10 requests per 60 seconds per API key to prevent abuse.
+    """
+    # Check rate limit
+    allowed, remaining = check_rate_limit(api_key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "Rate limit exceeded",
+                "message": "Maximum 10 job submissions per minute allowed",
+                "retry_after": 60,
+            },
+            headers={"Retry-After": "60"}
+        )
+    
     new_job = Job(
         job_type=job_in.job_type,
         payload=job_in.payload,
@@ -109,7 +127,11 @@ def create_job(
 
     logger.info(
         "Job created and enqueued",
-        extra={"job_id": str(new_job.id), "job_type": new_job.job_type},
+        extra={
+            "job_id": str(new_job.id), 
+            "job_type": new_job.job_type,
+            "rate_limit_remaining": remaining
+        },
     )
     return new_job
 
