@@ -7,81 +7,141 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 32px 20px;
         }
         .container { max-width: 1200px; margin: 0 auto; }
-        h1 {
-            color: #333;
-            margin-bottom: 30px;
-            font-size: 28px;
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
         }
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header p {
+            font-size: 16px;
+            opacity: 0.95;
+        }
+
+        /* Status summary cards */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
         .card {
             background: white;
-            border-radius: 8px;
-            padding: 24px;
+            border-radius: 16px;
+            padding: 32px;
             margin-bottom: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         }
         h2 {
-            font-size: 18px;
-            margin-bottom: 16px;
-            color: #555;
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333;
+            font-weight: 600;
         }
-        .form-group {
-            margin-bottom: 16px;
-        }
+        
+        .form-group { margin-bottom: 20px; }
         label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             font-size: 14px;
             color: #555;
-            font-weight: 500;
+            font-weight: 600;
         }
-        select, textarea, input {
+        select, textarea {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
             font-size: 14px;
             font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
         }
         textarea {
             resize: vertical;
-            min-height: 80px;
-            font-family: monospace;
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
         }
+        
         button {
-            background: #007bff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 500;
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
-        button:hover { background: #0056b3; }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        button:active { transform: translateY(0); }
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
+            box-shadow: none;
         }
+        
         .status {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .status.PENDING { background: #fff3cd; color: #856404; }
-        .status.PROCESSING { background: #cce5ff; color: #004085; }
-        .status.COMPLETED { background: #d4edda; color: #155724; }
-        .status.FAILED { background: #f8d7da; color: #721c24; }
-        .status.DEAD_LETTER { background: #d6d8d9; color: #383d41; }
-        .status.CANCELLED { background: #e2e3e5; color: #383d41; }
+        .status.PROCESSING { background: #cfe2ff; color: #084298; }
+        .status.COMPLETED { background: #d1e7dd; color: #0f5132; }
+        .status.FAILED { background: #f8d7da; color: #842029; }
+        .status.DEAD_LETTER { background: #e2e3e5; color: #41464b; }
+        .status.CANCELLED { background: #e2e3e5; color: #41464b; }
+        
         table {
             width: 100%;
             border-collapse: collapse;
@@ -89,43 +149,168 @@
         }
         th {
             background: #f8f9fa;
-            padding: 12px;
+            padding: 14px 16px;
             text-align: left;
-            font-weight: 600;
-            color: #555;
+            font-weight: 700;
+            color: #495057;
             border-bottom: 2px solid #dee2e6;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         td {
-            padding: 12px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        tr {
+            transition: background-color 0.2s;
+            cursor: pointer;
         }
         tr:hover { background: #f8f9fa; }
+        
         .mono {
-            font-family: monospace;
-            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
             color: #666;
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
         }
-        .error {
-            color: #d32f2f;
+        
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
             font-size: 14px;
-            margin-top: 8px;
         }
-        .success {
-            color: #388e3c;
-            font-size: 14px;
-            margin-top: 8px;
-        }
+        .error { background: #f8d7da; color: #842029; }
+        .success { background: #d1e7dd; color: #0f5132; }
+        
         .refresh-indicator {
             text-align: right;
-            color: #999;
+            color: #6c757d;
             font-size: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Modal for job details */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+        }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .modal-header h3 {
+            font-size: 20px;
+            color: #333;
+        }
+        .close {
+            font-size: 28px;
+            color: #999;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+            line-height: 1;
+        }
+        .close:hover { color: #333; }
+        .detail-row {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .detail-value {
+            font-size: 14px;
+            color: #333;
+            word-break: break-all;
+        }
+        .detail-value pre {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📊 Distributed Job Queue</h1>
+        <div class="header">
+            <h1>📊 Distributed Job Queue</h1>
+            <p>Asynchronous background task processing with retry and dead-letter handling</p>
+        </div>
+
+        <!-- Status Summary Cards -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="statTotal">0</div>
+                <div class="stat-label">Total Jobs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statCompleted">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statPending">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statProcessing">0</div>
+                <div class="stat-label">Processing</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statFailed">0</div>
+                <div class="stat-label">Failed/DLQ</div>
+            </div>
+        </div>
 
         <div class="card">
             <h2>Submit New Job</h2>
@@ -133,23 +318,28 @@
                 <div class="form-group">
                     <label for="jobType">Job Type</label>
                     <select id="jobType" required>
-                        <option value="send_email">Send Email</option>
-                        <option value="generate_report">Generate Report</option>
-                        <option value="resize_image">Resize Image</option>
+                        <option value="send_email">Send Email (2 seconds)</option>
+                        <option value="generate_report">Generate Report (30 seconds)</option>
+                        <option value="resize_image">Resize Image (1 second)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="payload">Payload (JSON format)</label>
                     <textarea id="payload" placeholder='{"to": "user@example.com"}' required></textarea>
                 </div>
-                <button type="submit" id="submitBtn">Submit Job</button>
+                <button type="submit" id="submitBtn">
+                    <span id="submitText">Submit Job</span>
+                </button>
                 <div id="formMessage"></div>
             </form>
         </div>
 
         <div class="card">
-            <div class="refresh-indicator" id="refreshIndicator">Last updated: -</div>
-            <h2>Recent Jobs</h2>
+            <div class="refresh-indicator">
+                <span id="refreshIndicator">Loading...</span>
+                <span><span class="loading-spinner"></span> Auto-refresh every 2s</span>
+            </div>
+            <h2>Recent Jobs <span style="color:#999;font-weight:400;font-size:14px;">(Click row for details)</span></h2>
             <table>
                 <thead>
                     <tr>
@@ -161,18 +351,27 @@
                     </tr>
                 </thead>
                 <tbody id="jobsTable">
-                    <tr><td colspan="5" style="text-align:center;color:#999;">Loading...</td></tr>
+                    <tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">Loading jobs...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
+    <!-- Job Details Modal -->
+    <div id="jobModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Job Details</h3>
+                <button class="close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
     <script>
-        // IMPORTANT: Replace this with your actual API key from Render environment
         const API_KEY = 'e5f2055707f2315d23b4f3162dd8226ea44355191faa690cdd8f55737f4164c4';
         const API_URL = window.location.origin;
 
-        // Prefill payload based on job type
         document.getElementById('jobType').addEventListener('change', (e) => {
             const payloadField = document.getElementById('payload');
             const examples = {
@@ -183,13 +382,14 @@
             payloadField.value = examples[e.target.value] || '{}';
         });
 
-        // Submit job form
         document.getElementById('jobForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const submitBtn = document.getElementById('submitBtn');
+            const submitText = document.getElementById('submitText');
             const messageDiv = document.getElementById('formMessage');
             
             submitBtn.disabled = true;
+            submitText.textContent = 'Submitting...';
             messageDiv.innerHTML = '';
 
             const jobType = document.getElementById('jobType').value;
@@ -212,33 +412,51 @@
                 }
 
                 const job = await response.json();
-                messageDiv.innerHTML = `<div class="success">✓ Job created: ${job.id}</div>`;
-                
-                // Refresh job list immediately
+                messageDiv.innerHTML = `<div class="message success">✓ Job created: ${job.id}</div>`;
                 loadJobs();
             } catch (err) {
-                messageDiv.innerHTML = `<div class="error">✗ Error: ${err.message}</div>`;
+                messageDiv.innerHTML = `<div class="message error">✗ Error: ${err.message}</div>`;
             } finally {
                 submitBtn.disabled = false;
+                submitText.textContent = 'Submit Job';
             }
         });
 
-        // Load jobs list
         async function loadJobs() {
             try {
-                const response = await fetch(`${API_URL}/jobs?page_size=20`, {
+                const response = await fetch(`${API_URL}/jobs?page_size=30`, {
                     headers: { 'X-API-Key': API_KEY }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
                 const tbody = document.getElementById('jobsTable');
                 
+                // Update stats
+                const stats = {
+                    total: data.total,
+                    completed: 0,
+                    pending: 0,
+                    processing: 0,
+                    failed: 0
+                };
+                
+                data.items.forEach(job => {
+                    if (job.status === 'COMPLETED') stats.completed++;
+                    else if (job.status === 'PENDING') stats.pending++;
+                    else if (job.status === 'PROCESSING') stats.processing++;
+                    else stats.failed++;
+                });
+
+                document.getElementById('statTotal').textContent = stats.total;
+                document.getElementById('statCompleted').textContent = stats.completed;
+                document.getElementById('statPending').textContent = stats.pending;
+                document.getElementById('statProcessing').textContent = stats.processing;
+                document.getElementById('statFailed').textContent = stats.failed;
+                
                 if (data.items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No jobs yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:40px;">No jobs yet. Submit your first job above!</td></tr>';
                     return;
                 }
 
@@ -248,12 +466,12 @@
                     const duration = updated ? ((updated - created) / 1000).toFixed(1) + 's' : '-';
                     
                     return `
-                        <tr>
-                            <td class="mono">${job.id.slice(0, 8)}...</td>
+                        <tr onclick='showJobDetails(${JSON.stringify(job).replace(/'/g, "&apos;")})'>
+                            <td><span class="mono">${job.id.slice(0, 8)}...</span></td>
                             <td>${job.job_type}</td>
                             <td><span class="status ${job.status}">${job.status}</span></td>
                             <td>${created.toLocaleTimeString()}</td>
-                            <td>${duration}</td>
+                            <td><strong>${duration}</strong></td>
                         </tr>
                     `;
                 }).join('');
@@ -266,7 +484,64 @@
             }
         }
 
-        // Auto-refresh every 2 seconds
+        function showJobDetails(job) {
+            const modal = document.getElementById('jobModal');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalBody.innerHTML = `
+                <div class="detail-row">
+                    <div class="detail-label">Job ID</div>
+                    <div class="detail-value mono">${job.id}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value"><span class="status ${job.status}">${job.status}</span></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Job Type</div>
+                    <div class="detail-value">${job.job_type}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Payload</div>
+                    <div class="detail-value"><pre>${JSON.stringify(job.payload, null, 2)}</pre></div>
+                </div>
+                ${job.result ? `
+                <div class="detail-row">
+                    <div class="detail-label">Result</div>
+                    <div class="detail-value"><pre>${JSON.stringify(job.result, null, 2)}</pre></div>
+                </div>` : ''}
+                ${job.error_message ? `
+                <div class="detail-row">
+                    <div class="detail-label">Error Message</div>
+                    <div class="detail-value" style="color:#d32f2f;">${job.error_message}</div>
+                </div>` : ''}
+                <div class="detail-row">
+                    <div class="detail-label">Retry Count</div>
+                    <div class="detail-value">${job.retry_count} / 3</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Created At</div>
+                    <div class="detail-value">${new Date(job.created_at).toLocaleString()}</div>
+                </div>
+                ${job.updated_at ? `
+                <div class="detail-row">
+                    <div class="detail-label">Updated At</div>
+                    <div class="detail-value">${new Date(job.updated_at).toLocaleString()}</div>
+                </div>` : ''}
+            `;
+            
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('jobModal').classList.remove('active');
+        }
+
+        // Close modal on outside click
+        document.getElementById('jobModal').addEventListener('click', (e) => {
+            if (e.target.id === 'jobModal') closeModal();
+        });
+
         loadJobs();
         setInterval(loadJobs, 2000);
     </script>
